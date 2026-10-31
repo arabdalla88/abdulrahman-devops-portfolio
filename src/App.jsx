@@ -6,7 +6,8 @@ import {
   Mail, Phone, MapPin, CalendarDays, ExternalLink, Search, CircleX, MessageSquareText, Server
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-const profilePhoto = '/media/Abdulrahman_Abdullah_Al-Sodany_Profile-2026-2.jpg';
+const mediaUrl = (filename) => `${import.meta.env.BASE_URL}media/${filename}`;
+const profilePhoto = mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Profile-2026-2.jpg');
 
 const stacks = [
   "Kubernetes & Helm",
@@ -529,7 +530,7 @@ export default function App() {
                 </a>
 
                 <a
-                  href="/media/Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
+                  href={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_CV.pdf')}
                   download
                   className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-6 py-3 text-sm font-semibold text-violet-900 transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
                 >
@@ -678,14 +679,14 @@ export default function App() {
               filename="Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
               fileType="PDF Document (2 Pages)"
               date="2026 Edition"
-              downloadHref="/media/Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
+              downloadHref={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_CV.pdf')}
               badge="VERIFIED RESUME"
               badgeColor="cyan"
               onPreview={() => setActiveModalDoc({
                 title: "Official Curriculum Vitae",
                 subtitle: "Abdulrahman Abdullah Al-Sodany - DevOps Engineer",
                 type: "cv",
-                previewUrl: "/media/Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
+                previewUrl: mediaUrl('Abdulrahman_Abdullah_Al-Sodany_CV.pdf')
               })}
             />
 
@@ -695,14 +696,14 @@ export default function App() {
               filename="Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf"
               fileType="PDF Document"
               date="2026 Edition"
-              downloadHref="/media/Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf"
+              downloadHref={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf')}
               badge="LETTER OF INTENT"
               badgeColor="emerald"
               onPreview={() => setActiveModalDoc({
                 title: "Professional Cover Letter",
                 subtitle: "DevOps & Infrastructure Engineer Application",
                 type: "cover",
-                previewUrl: "/media/Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf"
+                previewUrl: mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf')
               })}
             />
 
@@ -712,14 +713,14 @@ export default function App() {
               filename="Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg"
               fileType="Official Academic Certificate (Image)"
               date="2026"
-              downloadHref="/media/Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg"
+              downloadHref={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg')}
               badge="VERY GOOD (GPA 3.01)"
               badgeColor="yellow"
               onPreview={() => setActiveModalDoc({
                 title: "B.Sc. Communications & Electronics Engineering",
                 subtitle: "Delta Higher Institute for Engineering & Technology | Project Grade: Excellent",
                 type: "degree",
-                previewUrl: "/media/Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg"
+                previewUrl: mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg')
               })}
             />
 
