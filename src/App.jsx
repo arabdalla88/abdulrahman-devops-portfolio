@@ -3,11 +3,11 @@ import {
   Terminal, Shield, Activity, Code, FileText, Download, ArrowUp, Copy, Check,
   Award, Layers, Network, Send, UserCheck, Eye, Sparkles, ChevronRight, X,
   Volume2, VolumeX, BriefcaseBusiness, GraduationCap, Trophy, GitBranch, Ellipsis,
-  Mail, Phone, MapPin, CalendarDays, ExternalLink, Search, CircleX, MessageSquareText, Server
+  Mail, Phone, MapPin, CalendarDays, ExternalLink, Search, CircleX, MessageSquareText, Server,
+  Moon, Sun
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-const mediaUrl = (filename) => `${import.meta.env.BASE_URL}media/${filename}`;
-const profilePhoto = mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Profile-2026-2.jpg');
+const profilePhoto = '/media/Abdulrahman_Abdullah_Al-Sodany_Profile-2026-2.jpg';
 
 const stacks = [
   "Kubernetes & Helm",
@@ -182,18 +182,14 @@ export default function App() {
   const [copiedText, setCopiedText] = useState(null);
   const [activeModalDoc, setActiveModalDoc] = useState(null);
   const [activeModalProject, setActiveModalProject] = useState(null);
-  const [scrollProgress, setScrollProgress] = useState(0);
   const [activeSection, setActiveSection] = useState('hero');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [darkMode, setDarkMode] = useState(
+    () => window.localStorage.getItem('portfolio-theme') === 'dark',
+  );
   const [projectFilter, setProjectFilter] = useState('all');
   const [skillQuery, setSkillQuery] = useState('');
   const [skillView, setSkillView] = useState('technical');
   const [skillCategory, setSkillCategory] = useState('all');
-
-  // Typewriter effect
-  const [typeIndex, setTypeIndex] = useState(0);
-  const [typeText, setTypeText] = useState("");
-  const [isDeleting, setIsDeleting] = useState(false);
 
   // Sound Toggle Handler
   const toggleAudio = () => {
@@ -209,30 +205,6 @@ export default function App() {
     fx.playBeep(900, 0.05);
     setTimeout(() => setCopiedText(null), 2500);
   };
-
-  // Dynamic Typewriter Effect
-  useEffect(() => {
-    const currentWord = stacks[typeIndex % stacks.length];
-    if (!isDeleting && typeText === currentWord) {
-      const pause = setTimeout(() => setIsDeleting(true), 1500);
-      return () => clearTimeout(pause);
-    }
-
-    if (isDeleting && typeText === "") {
-      const nextWord = setTimeout(() => {
-        setIsDeleting(false);
-        setTypeIndex((previous) => previous + 1);
-      }, 180);
-      return () => clearTimeout(nextWord);
-    }
-
-    const typing = setTimeout(() => {
-      setTypeText((current) => (
-        isDeleting ? current.slice(0, -1) : currentWord.slice(0, current.length + 1)
-      ));
-    }, isDeleting ? 35 : 60);
-    return () => clearTimeout(typing);
-  }, [typeText, isDeleting, typeIndex]);
 
   useEffect(() => {
     const handleSectionNavigation = (event) => {
@@ -281,30 +253,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!mobileMenuOpen) return undefined;
-
-    const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setMobileMenuOpen(false);
-    };
-    const closeOnOutsideClick = (event) => {
-      if (event.target instanceof Element && !event.target.closest('.portfolio-header')) {
-        setMobileMenuOpen(false);
-      }
-    };
-
-    document.addEventListener('keydown', closeOnEscape);
-    document.addEventListener('click', closeOnOutsideClick);
-    return () => {
-      document.removeEventListener('keydown', closeOnEscape);
-      document.removeEventListener('click', closeOnOutsideClick);
-    };
-  }, [mobileMenuOpen]);
+    window.localStorage.setItem('portfolio-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   useEffect(() => {
     const updateProgress = () => {
-      const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
-      setScrollProgress(scrollableHeight > 0 ? (window.scrollY / scrollableHeight) * 100 : 0);
-
       const sections = [...document.querySelectorAll('main section[id]')];
       const currentSections = sections.filter((section) => section.getBoundingClientRect().top <= 250);
       const current = currentSections[currentSections.length - 1];
@@ -371,20 +324,12 @@ export default function App() {
   const hardSkillCount = hardSkillGroups.reduce((total, group) => total + group.skills.length, 0);
 
   return (
-    <div className="portfolio-theme min-h-screen font-sans text-slate-700 selection:bg-cyan-200 selection:text-slate-900 overflow-x-hidden relative">
+    <div className={`portfolio-theme min-h-screen font-sans text-slate-700 selection:bg-cyan-200 selection:text-slate-900 overflow-x-hidden relative${darkMode ? ' dark-theme' : ''}`}>
       {/* Matrix Rain Easter Egg Component */}
       {matrixActive && <MatrixRain onClose={() => setMatrixActive(false)} />}
 
       <header className="portfolio-header fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
-        <div
-          className="scroll-progress"
-          role="progressbar"
-          aria-label="Page reading progress"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(scrollProgress)}
-          style={{ width: `${scrollProgress}%` }}
-        />
+        <ScrollProgress />
         <div className="w-full max-w-none mx-auto px-4 sm:px-6 lg:px-8 h-16 md:h-20 flex items-center justify-between">
           <div className="flex items-center space-x-3 rtl:space-x-reverse">
             <div className="w-10 h-10 rounded-lg bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-800 font-sans font-bold">
@@ -406,15 +351,16 @@ export default function App() {
           </nav>
 
           <div className="flex items-center">
+            <MobileSectionMenu activeSection={activeSection} />
             <button
               type="button"
-              onClick={() => setMobileMenuOpen((isOpen) => !isOpen)}
-              aria-label={mobileMenuOpen ? 'Close section menu' : 'Open section menu'}
-              aria-expanded={mobileMenuOpen}
-              aria-controls="mobile-section-navigation"
-              className="mobile-menu-toggle mr-2 rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800 lg:hidden"
+              onClick={() => setDarkMode((isDark) => !isDark)}
+              aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-pressed={darkMode}
+              className="theme-mode-toggle mr-2 rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
+              title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
             >
-              {mobileMenuOpen ? <X size={19} /> : <Ellipsis size={20} />}
+              {darkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
             <button
               type="button"
@@ -431,16 +377,6 @@ export default function App() {
             </a>
           </div>
         </div>
-        {mobileMenuOpen && (
-          <nav id="mobile-section-navigation" aria-label="Section navigation" className="portfolio-mobile-nav lg:hidden">
-            <a href="#experience" aria-current={activeSection === 'experience' ? 'location' : undefined} className="portfolio-nav-link" onClick={() => setMobileMenuOpen(false)}><BriefcaseBusiness size={16} /> Experience</a>
-            <a href="#vault" aria-current={activeSection === 'vault' ? 'location' : undefined} className="portfolio-nav-link" onClick={() => setMobileMenuOpen(false)}><Shield size={16} /> Credentials</a>
-            <a href="#projects" aria-current={activeSection === 'projects' ? 'location' : undefined} className="portfolio-nav-link" onClick={() => setMobileMenuOpen(false)}><Layers size={16} /> Projects</a>
-            <a href="#skills" aria-current={activeSection === 'skills' ? 'location' : undefined} className="portfolio-nav-link" onClick={() => setMobileMenuOpen(false)}><Code size={16} /> Skills</a>
-            <a href="#recognition" aria-current={activeSection === 'recognition' ? 'location' : undefined} className="portfolio-nav-link" onClick={() => setMobileMenuOpen(false)}><Trophy size={16} /> Recognition</a>
-            <a href="#contact" aria-current={activeSection === 'contact' ? 'location' : undefined} className="portfolio-nav-link" onClick={() => setMobileMenuOpen(false)}><Send size={16} /> Contact</a>
-          </nav>
-        )}
       </header>
 
       <main className="portfolio-main w-full max-w-none mx-auto pt-24 pb-16 px-4 sm:px-6 lg:px-10 2xl:px-12 space-y-20 relative z-10">
@@ -466,7 +402,7 @@ export default function App() {
                 </h1>
                 
                 <div className="h-10 flex items-center text-lg sm:text-xl font-sans text-slate-600">
-                  <span className="text-cyan-800 font-semibold">{typeText}</span>
+                  <TypewriterText />
                   <span className="w-0.5 h-6 bg-cyan-700 ml-1 animate-pulse" />
                 </div>
               </div>
@@ -530,7 +466,7 @@ export default function App() {
                 </a>
 
                 <a
-                  href={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_CV.pdf')}
+                  href="/media/Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
                   download
                   className="inline-flex items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-6 py-3 text-sm font-semibold text-violet-900 transition hover:-translate-y-0.5 hover:border-violet-300 hover:bg-violet-100"
                 >
@@ -679,14 +615,14 @@ export default function App() {
               filename="Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
               fileType="PDF Document (2 Pages)"
               date="2026 Edition"
-              downloadHref={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_CV.pdf')}
+              downloadHref="/media/Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
               badge="VERIFIED RESUME"
               badgeColor="cyan"
               onPreview={() => setActiveModalDoc({
                 title: "Official Curriculum Vitae",
                 subtitle: "Abdulrahman Abdullah Al-Sodany - DevOps Engineer",
                 type: "cv",
-                previewUrl: mediaUrl('Abdulrahman_Abdullah_Al-Sodany_CV.pdf')
+                previewUrl: "/media/Abdulrahman_Abdullah_Al-Sodany_CV.pdf"
               })}
             />
 
@@ -696,14 +632,14 @@ export default function App() {
               filename="Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf"
               fileType="PDF Document"
               date="2026 Edition"
-              downloadHref={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf')}
+              downloadHref="/media/Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf"
               badge="LETTER OF INTENT"
               badgeColor="emerald"
               onPreview={() => setActiveModalDoc({
                 title: "Professional Cover Letter",
                 subtitle: "DevOps & Infrastructure Engineer Application",
                 type: "cover",
-                previewUrl: mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf')
+                previewUrl: "/media/Abdulrahman_Abdullah_Al-Sodany_Cover-Letter.pdf"
               })}
             />
 
@@ -713,14 +649,14 @@ export default function App() {
               filename="Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg"
               fileType="Official Academic Certificate (Image)"
               date="2026"
-              downloadHref={mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg')}
+              downloadHref="/media/Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg"
               badge="VERY GOOD (GPA 3.01)"
               badgeColor="yellow"
               onPreview={() => setActiveModalDoc({
                 title: "B.Sc. Communications & Electronics Engineering",
                 subtitle: "Delta Higher Institute for Engineering & Technology | Project Grade: Excellent",
                 type: "degree",
-                previewUrl: mediaUrl('Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg')
+                previewUrl: "/media/Abdulrahman_Abdullah_Al-Sodany_Degree-Certificate.jpeg"
               })}
             />
 
@@ -1163,7 +1099,7 @@ export default function App() {
       </main>
 
       {/* Floating Rocket Back-to-Top Button */}
-      <RocketButton visible={scrollProgress > 8} />
+      <RocketButton />
 
       <footer className="portfolio-footer border-t border-slate-200 bg-white py-6 text-center text-sm text-slate-500">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -1203,6 +1139,125 @@ export default function App() {
 }
 
 // --- SUB-COMPONENTS ---
+
+function TypewriterText() {
+  const [typeIndex, setTypeIndex] = useState(0);
+  const [typeText, setTypeText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  useEffect(() => {
+    const currentWord = stacks[typeIndex % stacks.length];
+    if (!isDeleting && typeText === currentWord) {
+      const pause = setTimeout(() => setIsDeleting(true), 1500);
+      return () => clearTimeout(pause);
+    }
+
+    if (isDeleting && typeText === '') {
+      const nextWord = setTimeout(() => {
+        setIsDeleting(false);
+        setTypeIndex((previous) => previous + 1);
+      }, 180);
+      return () => clearTimeout(nextWord);
+    }
+
+    const typing = setTimeout(() => {
+      setTypeText((current) => (
+        isDeleting ? current.slice(0, -1) : currentWord.slice(0, current.length + 1)
+      ));
+    }, isDeleting ? 35 : 60);
+    return () => clearTimeout(typing);
+  }, [typeText, isDeleting, typeIndex]);
+
+  return <span className="text-cyan-800 font-semibold">{typeText}</span>;
+}
+
+function ScrollProgress() {
+  const [progress, setProgress] = useState(0);
+
+  useEffect(() => {
+    const updateProgress = () => {
+      const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
+      setProgress(scrollableHeight > 0 ? (window.scrollY / scrollableHeight) * 100 : 0);
+    };
+
+    updateProgress();
+    window.addEventListener('scroll', updateProgress, { passive: true });
+    window.addEventListener('resize', updateProgress);
+    return () => {
+      window.removeEventListener('scroll', updateProgress);
+      window.removeEventListener('resize', updateProgress);
+    };
+  }, []);
+
+  return (
+    <div
+      className="scroll-progress"
+      role="progressbar"
+      aria-label="Page reading progress"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(progress)}
+      style={{ width: `${progress}%` }}
+    />
+  );
+}
+
+const MobileSectionMenu = React.memo(function MobileSectionMenu({ activeSection }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    const closeOnOutsidePointer = (event) => {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    const closeOnDesktopResize = () => {
+      if (window.innerWidth >= 1024) setIsOpen(false);
+    };
+
+    document.addEventListener('keydown', closeOnEscape);
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    window.addEventListener('resize', closeOnDesktopResize);
+    return () => {
+      document.removeEventListener('keydown', closeOnEscape);
+      document.removeEventListener('pointerdown', closeOnOutsidePointer);
+      window.removeEventListener('resize', closeOnDesktopResize);
+    };
+  }, [isOpen]);
+
+  const closeMenu = () => setIsOpen(false);
+
+  return (
+    <div className="mobile-menu-control lg:hidden" ref={menuRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen((open) => !open)}
+        aria-label={isOpen ? 'Close section menu' : 'Open section menu'}
+        aria-expanded={isOpen}
+        aria-controls="mobile-section-navigation"
+        className="mobile-menu-toggle mr-2 rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-800"
+      >
+        {isOpen ? <X size={19} /> : <Ellipsis size={20} />}
+      </button>
+      {isOpen && (
+        <nav id="mobile-section-navigation" aria-label="Section navigation" className="portfolio-mobile-nav">
+          <a href="#experience" aria-current={activeSection === 'experience' ? 'location' : undefined} className="portfolio-nav-link" onClick={closeMenu}><BriefcaseBusiness size={16} /> Experience</a>
+          <a href="#vault" aria-current={activeSection === 'vault' ? 'location' : undefined} className="portfolio-nav-link" onClick={closeMenu}><Shield size={16} /> Credentials</a>
+          <a href="#projects" aria-current={activeSection === 'projects' ? 'location' : undefined} className="portfolio-nav-link" onClick={closeMenu}><Layers size={16} /> Projects</a>
+          <a href="#skills" aria-current={activeSection === 'skills' ? 'location' : undefined} className="portfolio-nav-link" onClick={closeMenu}><Code size={16} /> Skills</a>
+          <a href="#recognition" aria-current={activeSection === 'recognition' ? 'location' : undefined} className="portfolio-nav-link" onClick={closeMenu}><Trophy size={16} /> Recognition</a>
+          <a href="#contact" aria-current={activeSection === 'contact' ? 'location' : undefined} className="portfolio-nav-link" onClick={closeMenu}><Send size={16} /> Contact</a>
+        </nav>
+      )}
+    </div>
+  );
+});
 
 function StatCard({ icon: Icon, value, label, tone }) {
   return (
@@ -1675,7 +1730,25 @@ function ContactDispatchForm() {
 }
 
 // 11. Rocket Back to Top Floating Button
-function RocketButton({ visible }) {
+function RocketButton() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const updateVisibility = () => {
+      const scrollableHeight = document.documentElement.scrollHeight - window.innerHeight;
+      const progress = scrollableHeight > 0 ? (window.scrollY / scrollableHeight) * 100 : 0;
+      setVisible(progress > 8);
+    };
+
+    updateVisibility();
+    window.addEventListener('scroll', updateVisibility, { passive: true });
+    window.addEventListener('resize', updateVisibility);
+    return () => {
+      window.removeEventListener('scroll', updateVisibility);
+      window.removeEventListener('resize', updateVisibility);
+    };
+  }, []);
+
   const scrollToTop = () => {
     fx.playBeep(1100, 0.08);
     scrollPageTo(0);
