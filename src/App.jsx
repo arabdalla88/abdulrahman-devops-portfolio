@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Terminal, Shield, Activity, Code, FileText, Download, ArrowUp, Copy, Check,
   Award, Layers, Network, Send, UserCheck, Eye, Sparkles, ChevronRight, X,
@@ -84,11 +84,95 @@ class SoundFX {
   constructor() {
     this.ctx = null;
     this.muted = true;
+    this.ambientVoices = [];
+    this.ambientTimer = null;
+    this.melodyTimer = null;
   }
   init() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContextClass) {
+        throw new Error('Web Audio is not supported by this browser.');
+      }
+      this.ctx = new AudioContextClass();
     }
+  }
+  async startAmbient() {
+    this.init();
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+    if (this.ambientVoices.length > 0) return;
+
+    const chordProgression = [
+      [130.81, 196, 246.94, 329.63],
+      [110, 164.81, 220, 329.63],
+      [130.81, 174.61, 220, 293.66],
+      [98, 164.81, 196, 293.66],
+    ];
+    const startTime = this.ctx.currentTime;
+
+    this.ambientVoices = chordProgression[0].map((frequency, index) => {
+      const oscillator = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, startTime);
+      gain.gain.setValueAtTime(0.0001, startTime);
+      gain.gain.exponentialRampToValueAtTime(index === 0 ? 0.035 : 0.026, startTime + 2.5);
+      oscillator.connect(gain);
+      gain.connect(this.ctx.destination);
+      oscillator.start(startTime);
+      return { oscillator, gain };
+    });
+
+    const melody = [392, 440, 523.25, 493.88, 440, 392, 329.63, 392];
+    const melodyOscillator = this.ctx.createOscillator();
+    const melodyGain = this.ctx.createGain();
+    melodyOscillator.type = 'sine';
+    melodyOscillator.frequency.setValueAtTime(melody[0], startTime);
+    melodyGain.gain.setValueAtTime(0.0001, startTime);
+    melodyOscillator.connect(melodyGain);
+    melodyGain.connect(this.ctx.destination);
+    melodyOscillator.start(startTime);
+    this.ambientVoices.push({ oscillator: melodyOscillator, gain: melodyGain });
+
+    let melodyIndex = 0;
+    this.melodyTimer = window.setInterval(() => {
+      melodyIndex = (melodyIndex + 1) % melody.length;
+      const noteTime = this.ctx.currentTime;
+      melodyOscillator.frequency.setTargetAtTime(melody[melodyIndex], noteTime, 0.08);
+      melodyGain.gain.cancelScheduledValues(noteTime);
+      melodyGain.gain.setValueAtTime(Math.max(melodyGain.gain.value, 0.0001), noteTime);
+      melodyGain.gain.exponentialRampToValueAtTime(0.032, noteTime + 0.16);
+      melodyGain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 1.8);
+    }, 2200);
+
+    let chordIndex = 0;
+    this.ambientTimer = window.setInterval(() => {
+      chordIndex = (chordIndex + 1) % chordProgression.length;
+      const changeTime = this.ctx.currentTime;
+      this.ambientVoices.forEach(({ oscillator }, index) => {
+        oscillator.frequency.setTargetAtTime(chordProgression[chordIndex][index], changeTime, 2.5);
+      });
+    }, 8000);
+  }
+  stopAmbient() {
+    if (this.ambientTimer !== null) {
+      window.clearInterval(this.ambientTimer);
+      this.ambientTimer = null;
+    }
+    if (this.melodyTimer !== null) {
+      window.clearInterval(this.melodyTimer);
+      this.melodyTimer = null;
+    }
+
+    const stopTime = this.ctx?.currentTime ?? 0;
+    this.ambientVoices.forEach(({ oscillator, gain }) => {
+      gain.gain.cancelScheduledValues(stopTime);
+      gain.gain.setTargetAtTime(0.0001, stopTime, 0.18);
+      oscillator.stop(stopTime + 0.8);
+    });
+    this.ambientVoices = [];
   }
   playBeep(freq = 800, duration = 0.05, type = 'sine') {
     if (this.muted) return;
@@ -177,6 +261,7 @@ function scrollPageTo(targetY) {
 export default function App() {
   // Global States
   const [audioEnabled, setAudioEnabled] = useState(false);
+  const [audioError, setAudioError] = useState('');
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [matrixActive, setMatrixActive] = useState(false);
   const [copiedText, setCopiedText] = useState(null);
@@ -190,12 +275,28 @@ export default function App() {
   const [skillQuery, setSkillQuery] = useState('');
   const [skillView, setSkillView] = useState('technical');
   const [skillCategory, setSkillCategory] = useState('all');
+  const stopMatrix = useCallback(() => setMatrixActive(false), []);
 
   // Sound Toggle Handler
-  const toggleAudio = () => {
-    fx.muted = audioEnabled;
-    setAudioEnabled(!audioEnabled);
-    if (audioEnabled) fx.playBeep(400, 0.1);
+  const toggleAudio = async () => {
+    if (audioEnabled) {
+      fx.stopAmbient();
+      fx.muted = true;
+      setAudioEnabled(false);
+      setAudioError('');
+      return;
+    }
+
+    try {
+      fx.muted = false;
+      await fx.startAmbient();
+      setAudioEnabled(true);
+      setAudioError('');
+    } catch (error) {
+      fx.muted = true;
+      console.error('Background music could not be started.', error);
+      setAudioError('Background music could not be started in this browser.');
+    }
   };
 
   // Copy helper
@@ -325,8 +426,7 @@ export default function App() {
 
   return (
     <div className={`portfolio-theme min-h-screen font-sans text-slate-700 selection:bg-cyan-200 selection:text-slate-900 overflow-x-hidden relative${darkMode ? ' dark-theme' : ''}`}>
-      {/* Matrix Rain Easter Egg Component */}
-      {matrixActive && <MatrixRain onClose={() => setMatrixActive(false)} />}
+      {matrixActive && <MatrixRain onClose={stopMatrix} />}
 
       <header className="portfolio-header fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-200">
         <ScrollProgress />
@@ -365,13 +465,14 @@ export default function App() {
             <button
               type="button"
               onClick={toggleAudio}
-              aria-label={audioEnabled ? 'Mute interface sounds' : 'Enable interface sounds'}
+              aria-label={audioEnabled ? 'Stop background music' : 'Play calm background music'}
               aria-pressed={audioEnabled}
               className="mr-3 rounded-full border border-slate-200 bg-white p-2 text-slate-600 transition hover:border-violet-300 hover:bg-violet-50 hover:text-violet-800"
-              title={audioEnabled ? 'Mute interface sounds' : 'Enable interface sounds'}
+              title={audioEnabled ? 'Stop background music' : 'Play calm background music'}
             >
               {audioEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
             </button>
+            {audioError && <span role="status" className="sr-only">{audioError}</span>}
             <a href="#contact" className="hidden lg:inline-flex items-center px-4 py-2 rounded-lg bg-cyan-800 text-white text-sm font-semibold hover:bg-cyan-900 transition-colors">
               Get in touch
             </a>
@@ -437,7 +538,7 @@ export default function App() {
                     href="https://github.com/arabdalla88" 
                     target="_blank" 
                     rel="noreferrer"
-                    className="p-2 rounded-lg bg-cyan-50 border border-cyan-200 text-cyan-800 hover:bg-cyan-100 hover:scale-105 transition-all"
+                    className="hero-social-link hero-social-github p-2 rounded-lg bg-cyan-50 border border-cyan-200 text-cyan-800 hover:bg-cyan-100 hover:scale-105 transition-all"
                     title="GitHub Repository"
                   >
                     <GitBranch size={16} />
@@ -446,7 +547,7 @@ export default function App() {
                     href="https://www.linkedin.com/in/abdulrahman-abdullah10/" 
                     target="_blank" 
                     rel="noreferrer"
-                    className="p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 hover:scale-105 transition-all"
+                    className="hero-social-link hero-social-linkedin p-2 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 hover:bg-emerald-100 hover:scale-105 transition-all"
                     title="LinkedIn Profile"
                   >
                     <UserCheck size={16} />
@@ -1114,7 +1215,12 @@ export default function App() {
       {terminalOpen && (
         <TerminalModal 
           onClose={() => setTerminalOpen(false)} 
-          onTriggerMatrix={() => { setTerminalOpen(false); setMatrixActive(true); }}
+          onTriggerMatrix={(command) => {
+            setTerminalOpen(false);
+            setMatrixActive((active) => (
+              command === 'matrix off' ? false : command === 'matrix on' ? true : !active
+            ));
+          }}
         />
       )}
 
@@ -1408,7 +1514,7 @@ function TerminalModal({ onClose, onTriggerMatrix }) {
 
       switch (cmd) {
         case 'help':
-          newHistory.push({ type: 'output', text: 'Commands: whoami, skills, projects, cat cv.pdf, matrix, clear, sudo rm -rf /, contact' });
+          newHistory.push({ type: 'output', text: 'Commands: whoami, skills, projects, cat cv.pdf, matrix [on|off], clear, sudo rm -rf /, contact' });
           break;
         case 'whoami':
           newHistory.push({ type: 'output', text: 'Abdulrahman Abdullah Al-Sodany | Cloud DevOps Engineer | B.Sc. Engineer (GPA 3.01) | Cairo & New Capital' });
@@ -1423,7 +1529,9 @@ function TerminalModal({ onClose, onTriggerMatrix }) {
           newHistory.push({ type: 'output', text: 'Opening secure vault viewer...' });
           break;
         case 'matrix':
-          onTriggerMatrix();
+        case 'matrix on':
+        case 'matrix off':
+          onTriggerMatrix(cmd);
           return;
         case 'clear':
           setHistory([]);
@@ -1496,7 +1604,7 @@ function TerminalModal({ onClose, onTriggerMatrix }) {
   );
 }
 
-// 6. Matrix Rain Overlay Component
+// 6. Matrix Rain Background Component
 function MatrixRain({ onClose }) {
   const canvasRef = useRef(null);
 
@@ -1504,45 +1612,76 @@ function MatrixRain({ onClose }) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    if (!ctx) {
+      throw new Error('Matrix background canvas is not supported by this browser.');
+    }
 
     const chars = '01ABCDEFGHIJKLMNOPQRSTUVWXYZKUBERNETESDEVOPS';
-    const fontSize = 14;
-    const columns = Math.floor(canvas.width / fontSize);
-    const drops = Array(columns).fill(1);
+    let columns = [];
+    let fontSize = 14;
+    let width = 0;
+    let height = 0;
+    let frameId = 0;
+    let lastFrameTime = 0;
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    const draw = () => {
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = '#00ff9d';
-      ctx.font = `${fontSize}px monospace`;
-
-      for (let i = 0; i < drops.length; i++) {
-        const text = chars.charAt(Math.floor(Math.random() * chars.length));
-        ctx.fillText(text, i * fontSize, drops[i] * fontSize);
-
-        if (drops[i] * fontSize > canvas.height && Math.random() > 0.975) {
-          drops[i] = 0;
-        }
-        drops[i]++;
-      }
+    const resize = () => {
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+      width = window.innerWidth;
+      height = window.innerHeight;
+      fontSize = Math.max(12, Math.min(18, width * 0.012));
+      canvas.width = Math.ceil(width * pixelRatio);
+      canvas.height = Math.ceil(height * pixelRatio);
+      ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      columns = Array.from({ length: Math.ceil(width / fontSize) }, () => (
+        Math.random() * (height / fontSize)
+      ));
     };
 
-    const interval = setInterval(draw, 33);
-    return () => clearInterval(interval);
-  }, []);
+    const draw = (time) => {
+      if (time - lastFrameTime < 45) {
+        frameId = window.requestAnimationFrame(draw);
+        return;
+      }
+      lastFrameTime = time;
+      ctx.clearRect(0, 0, width, height);
+      ctx.font = `${fontSize}px monospace`;
+      ctx.textAlign = 'center';
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black cursor-pointer" onClick={onClose}>
-      <canvas ref={canvasRef} className="w-full h-full" />
-      <div className="absolute top-4 right-4 px-4 py-2 rounded bg-emerald-950 border border-emerald-500 text-emerald-400 font-mono text-xs">
-        [MATRIX MODE ACTIVE - CLICK ANYWHERE TO EXIT]
-      </div>
-    </div>
-  );
+      columns.forEach((drop, index) => {
+        const x = index * fontSize + fontSize / 2;
+        const headY = drop * fontSize;
+        for (let trail = 5; trail >= 0; trail -= 1) {
+          const y = headY - trail * fontSize;
+          if (y < 0 || y > height) continue;
+          ctx.globalAlpha = trail === 0 ? 0.72 : (0.25 / trail);
+          ctx.fillStyle = trail === 0 ? '#a7f3d0' : '#00c878';
+          ctx.fillText(chars.charAt(Math.floor(Math.random() * chars.length)), x, y);
+        }
+
+        columns[index] += 0.45 + Math.random() * 0.9;
+        if (headY > height && Math.random() > 0.975) columns[index] = 0;
+      });
+      ctx.globalAlpha = 1;
+      if (!reducedMotion) frameId = window.requestAnimationFrame(draw);
+    };
+
+    const stopOnEscape = (event) => {
+      if (event.key === 'Escape') onClose();
+    };
+
+    resize();
+    frameId = window.requestAnimationFrame(draw);
+    window.addEventListener('resize', resize);
+    window.addEventListener('keydown', stopOnEscape);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('keydown', stopOnEscape);
+    };
+  }, [onClose]);
+
+  return <canvas ref={canvasRef} className="matrix-rain-background" aria-hidden="true" />;
 }
 
 // 7. Document Viewer Modal
