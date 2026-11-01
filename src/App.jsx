@@ -85,8 +85,11 @@ class SoundFX {
     this.ctx = null;
     this.muted = true;
     this.ambientVoices = [];
+    this.chordVoices = [];
+    this.ambientBus = null;
     this.ambientTimer = null;
     this.melodyTimer = null;
+    this.noiseBuffer = null;
   }
   init() {
     if (!this.ctx) {
@@ -105,56 +108,91 @@ class SoundFX {
     if (this.ambientVoices.length > 0) return;
 
     const chordProgression = [
-      [130.81, 196, 246.94, 329.63],
-      [110, 164.81, 220, 329.63],
-      [130.81, 174.61, 220, 293.66],
-      [98, 164.81, 196, 293.66],
+      [130.81, 196, 261.63],
+      [110, 164.81, 220],
+      [130.81, 174.61, 220],
+      [98, 164.81, 196],
     ];
     const startTime = this.ctx.currentTime;
+    const convolver = this.ctx.createConvolver();
+    const impulseLength = this.ctx.sampleRate * 2;
+    const impulse = this.ctx.createBuffer(2, impulseLength, this.ctx.sampleRate);
+    for (let channel = 0; channel < impulse.numberOfChannels; channel += 1) {
+      const channelData = impulse.getChannelData(channel);
+      for (let sample = 0; sample < impulseLength; sample += 1) {
+        const decay = (1 - sample / impulseLength) ** 2.5;
+        channelData[sample] = (Math.random() * 2 - 1) * decay;
+      }
+    }
+    convolver.buffer = impulse;
+    this.ambientBus = this.ctx.createGain();
+    this.ambientBus.gain.setValueAtTime(0.7, startTime);
+    const reverbGain = this.ctx.createGain();
+    reverbGain.gain.setValueAtTime(0.18, startTime);
+    this.ambientBus.connect(this.ctx.destination);
+    this.ambientBus.connect(convolver);
+    convolver.connect(reverbGain);
+    reverbGain.connect(this.ctx.destination);
 
-    this.ambientVoices = chordProgression[0].map((frequency, index) => {
+    this.chordVoices = chordProgression[0].map((frequency, index) => {
       const oscillator = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
-      oscillator.type = 'sine';
+      oscillator.type = 'triangle';
       oscillator.frequency.setValueAtTime(frequency, startTime);
-      gain.gain.setValueAtTime(0.0001, startTime);
-      gain.gain.exponentialRampToValueAtTime(index === 0 ? 0.035 : 0.026, startTime + 2.5);
+      gain.gain.setValueAtTime(index === 0 ? 0.016 : 0.009, startTime);
       oscillator.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this.ambientBus);
       oscillator.start(startTime);
       return { oscillator, gain };
     });
+    this.ambientVoices = [...this.chordVoices];
 
-    const melody = [392, 440, 523.25, 493.88, 440, 392, 329.63, 392];
-    const melodyOscillator = this.ctx.createOscillator();
-    const melodyGain = this.ctx.createGain();
-    melodyOscillator.type = 'sine';
-    melodyOscillator.frequency.setValueAtTime(melody[0], startTime);
-    melodyGain.gain.setValueAtTime(0.0001, startTime);
-    melodyOscillator.connect(melodyGain);
-    melodyGain.connect(this.ctx.destination);
-    melodyOscillator.start(startTime);
-    this.ambientVoices.push({ oscillator: melodyOscillator, gain: melodyGain });
-
+    const melody = [523.25, 659.25, 783.99, 659.25, 587.33, 698.46, 880, 698.46, 523.25, 659.25, 783.99, 987.77, 880, 783.99, 659.25, 587.33];
     let melodyIndex = 0;
+    const playNote = (frequency) => {
+      const noteTime = this.ctx.currentTime;
+      const oscillator = this.ctx.createOscillator();
+      const harmonic = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      const harmonicGain = this.ctx.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, noteTime);
+      harmonic.type = 'sine';
+      harmonic.frequency.setValueAtTime(frequency * 2, noteTime);
+      gain.gain.setValueAtTime(0.0001, noteTime);
+      gain.gain.exponentialRampToValueAtTime(0.065, noteTime + 0.018);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 1.35);
+      harmonicGain.gain.setValueAtTime(0.0001, noteTime);
+      harmonicGain.gain.exponentialRampToValueAtTime(0.014, noteTime + 0.018);
+      harmonicGain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 0.85);
+      oscillator.connect(gain);
+      harmonic.connect(harmonicGain);
+      gain.connect(this.ambientBus);
+      harmonicGain.connect(this.ambientBus);
+      oscillator.start(noteTime);
+      harmonic.start(noteTime);
+      oscillator.stop(noteTime + 1.4);
+      harmonic.stop(noteTime + 0.9);
+      this.ambientVoices.push({ oscillator, gain }, { oscillator: harmonic, gain: harmonicGain });
+      oscillator.addEventListener('ended', () => {
+        this.ambientVoices = this.ambientVoices.filter((voice) => voice.oscillator !== oscillator && voice.oscillator !== harmonic);
+      }, { once: true });
+    };
+
+    playNote(melody[0]);
     this.melodyTimer = window.setInterval(() => {
       melodyIndex = (melodyIndex + 1) % melody.length;
-      const noteTime = this.ctx.currentTime;
-      melodyOscillator.frequency.setTargetAtTime(melody[melodyIndex], noteTime, 0.08);
-      melodyGain.gain.cancelScheduledValues(noteTime);
-      melodyGain.gain.setValueAtTime(Math.max(melodyGain.gain.value, 0.0001), noteTime);
-      melodyGain.gain.exponentialRampToValueAtTime(0.032, noteTime + 0.16);
-      melodyGain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 1.8);
-    }, 2200);
+      playNote(melody[melodyIndex]);
+    }, 720);
 
     let chordIndex = 0;
     this.ambientTimer = window.setInterval(() => {
       chordIndex = (chordIndex + 1) % chordProgression.length;
       const changeTime = this.ctx.currentTime;
-      this.ambientVoices.forEach(({ oscillator }, index) => {
-        oscillator.frequency.setTargetAtTime(chordProgression[chordIndex][index], changeTime, 2.5);
+      this.chordVoices.forEach(({ oscillator }, index) => {
+        oscillator.frequency.setTargetAtTime(chordProgression[chordIndex][index], changeTime, 1.2);
       });
-    }, 8000);
+    }, 5000);
   }
   stopAmbient() {
     if (this.ambientTimer !== null) {
@@ -167,12 +205,83 @@ class SoundFX {
     }
 
     const stopTime = this.ctx?.currentTime ?? 0;
+    if (this.ambientBus) {
+      this.ambientBus.gain.cancelScheduledValues(stopTime);
+      this.ambientBus.gain.setTargetAtTime(0.0001, stopTime, 0.12);
+    }
     this.ambientVoices.forEach(({ oscillator, gain }) => {
       gain.gain.cancelScheduledValues(stopTime);
-      gain.gain.setTargetAtTime(0.0001, stopTime, 0.18);
-      oscillator.stop(stopTime + 0.8);
+      try {
+        oscillator.stop(stopTime + 0.6);
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'InvalidStateError')) throw error;
+      }
     });
     this.ambientVoices = [];
+    this.chordVoices = [];
+    this.ambientBus = null;
+  }
+  async playFireworks() {
+    this.init();
+    if (this.ctx.state === 'suspended') {
+      await this.ctx.resume();
+    }
+    const now = this.ctx.currentTime;
+    const launch = this.ctx.createOscillator();
+    const launchGain = this.ctx.createGain();
+    launch.type = 'sine';
+    launch.frequency.setValueAtTime(360, now);
+    launch.frequency.exponentialRampToValueAtTime(1100, now + 0.42);
+    launchGain.gain.setValueAtTime(0.0001, now);
+    launchGain.gain.exponentialRampToValueAtTime(0.075, now + 0.16);
+    launchGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.48);
+    launch.connect(launchGain);
+    launchGain.connect(this.ctx.destination);
+    launch.start(now);
+    launch.stop(now + 0.5);
+
+    if (!this.noiseBuffer) {
+      const bufferLength = Math.floor(this.ctx.sampleRate * 1.2);
+      this.noiseBuffer = this.ctx.createBuffer(1, bufferLength, this.ctx.sampleRate);
+      const samples = this.noiseBuffer.getChannelData(0);
+      for (let index = 0; index < bufferLength; index += 1) {
+        samples[index] = (Math.random() * 2 - 1) * (1 - index / bufferLength);
+      }
+    }
+
+    [0.48, 0.9, 1.26].forEach((delay, burstIndex) => {
+      const burstTime = now + delay;
+      const noise = this.ctx.createBufferSource();
+      const filter = this.ctx.createBiquadFilter();
+      const burstGain = this.ctx.createGain();
+      noise.buffer = this.noiseBuffer;
+      filter.type = 'lowpass';
+      filter.frequency.setValueAtTime(2600, burstTime);
+      filter.frequency.exponentialRampToValueAtTime(420, burstTime + 0.95);
+      burstGain.gain.setValueAtTime(0.0001, burstTime);
+      burstGain.gain.exponentialRampToValueAtTime(burstIndex === 1 ? 0.24 : 0.16, burstTime + 0.025);
+      burstGain.gain.exponentialRampToValueAtTime(0.0001, burstTime + 1.15);
+      noise.connect(filter);
+      filter.connect(burstGain);
+      burstGain.connect(this.ctx.destination);
+      noise.start(burstTime);
+      noise.stop(burstTime + 1.2);
+
+      [880, 1174.66, 1567.98].forEach((frequency, noteIndex) => {
+        const sparkle = this.ctx.createOscillator();
+        const sparkleGain = this.ctx.createGain();
+        const noteTime = burstTime + 0.04 + noteIndex * 0.045;
+        sparkle.type = 'sine';
+        sparkle.frequency.setValueAtTime(frequency * (1 + burstIndex * 0.08), noteTime);
+        sparkleGain.gain.setValueAtTime(0.0001, noteTime);
+        sparkleGain.gain.exponentialRampToValueAtTime(0.035, noteTime + 0.015);
+        sparkleGain.gain.exponentialRampToValueAtTime(0.0001, noteTime + 0.55);
+        sparkle.connect(sparkleGain);
+        sparkleGain.connect(this.ctx.destination);
+        sparkle.start(noteTime);
+        sparkle.stop(noteTime + 0.6);
+      });
+    });
   }
   playBeep(freq = 800, duration = 0.05, type = 'sine') {
     if (this.muted) return;
@@ -398,6 +507,9 @@ export default function App() {
 
   const celebrateAward = (event) => {
     const buttonBounds = event.currentTarget.getBoundingClientRect();
+    fx.playFireworks().catch((error) => {
+      console.error('Fireworks audio could not be played.', error);
+    });
     confetti({
       particleCount: 90,
       spread: 78,
